@@ -419,13 +419,11 @@ class AppsService extends ChangeNotifier {
       });
     } else {
       category.applications.sort((a, b) {
-        final aOrder = a.categoryOrders[category.id];
-        final bOrder = b.categoryOrders[category.id];
-        if (aOrder == null && bOrder == null) {
+        final aOrder = a.categoryOrders[category.id] ?? double.infinity;
+        final bOrder = b.categoryOrders[category.id] ?? double.infinity;
+        if (aOrder == bOrder) {
           return a.packageName.compareTo(b.packageName);
         }
-        if (aOrder == null) return 1;
-        if (bOrder == null) return -1;
         return aOrder.compareTo(bOrder);
       });
     }
@@ -949,6 +947,28 @@ class AppsService extends ChangeNotifier {
 
     LauncherSection section = _launcherSections[index];
     if (section is Category) {
+      final appsInCategory = List<App>.from(section.applications);
+      for (final app in appsInCategory) {
+        app.categoryOrders.remove(section.id);
+      }
+
+      final Map<Category, List<App>> fallbackGroups = {};
+      for (final app in appsInCategory) {
+        final hasOtherCategories = app.categoryOrders.keys
+            .any((id) => id != section.id && _categoriesById.containsKey(id));
+        if (!hasOtherCategories) {
+          final targetCategory = _findTargetCategoryForNewApp(app.sideloaded);
+          if (targetCategory != null && targetCategory.id != section.id) {
+            (fallbackGroups[targetCategory] ??= []).add(app);
+          }
+        }
+      }
+
+      for (final entry in fallbackGroups.entries) {
+        await addAllToCategory(entry.value, entry.key,
+            shouldNotifyListeners: false);
+      }
+
       await _database.deleteCategory(section.id);
       _categoriesById.remove(section.id);
       _invalidateCategoryCache();

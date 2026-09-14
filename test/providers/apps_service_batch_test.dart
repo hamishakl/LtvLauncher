@@ -148,4 +148,58 @@ void main() {
     expect(cat1.order, 3);
     expect(cat2.order, 4);
   });
+
+  test(
+      'deleteSection reassigns apps without other categories to fallback category',
+      () async {
+    int customCatId = await appsService.addCategory("Custom Category",
+        shouldNotifyListeners: false);
+    Category customCategory =
+        appsService.categories.firstWhere((c) => c.id == customCatId);
+
+    final app = App(
+      packageName: 'com.example.custom_app',
+      name: 'Custom App',
+      version: '1.0.0',
+      hidden: false,
+    );
+
+    await database.persistApps([
+      const AppsCompanion(
+        packageName: Value('com.example.custom_app'),
+        name: Value('Custom App'),
+        version: Value('1.0.0'),
+      ),
+    ]);
+
+    await appsService.addToCategory(app, customCategory,
+        shouldNotifyListeners: false);
+
+    expect(customCategory.applications.map((a) => a.packageName),
+        contains('com.example.custom_app'));
+    expect(app.categoryOrders.containsKey(customCatId), true);
+
+    int sectionIndex = appsService.launcherSections
+        .indexWhere((s) => s.id == customCatId && s is Category);
+    expect(sectionIndex, isNot(-1));
+
+    await appsService.deleteSection(sectionIndex);
+
+    // Section deleted
+    expect(appsService.categories.any((c) => c.id == customCatId), false);
+    expect(app.categoryOrders.containsKey(customCatId), false);
+
+    // App migrated to TV Apps
+    final tvApps =
+        appsService.categories.firstWhere((c) => c.name == 'TV Apps');
+    expect(tvApps.applications.map((a) => a.packageName),
+        contains('com.example.custom_app'));
+    expect(app.categoryOrders.containsKey(tvApps.id), true);
+
+    // Persisted in DB as well
+    final dbRows = await database.getAppsCategories();
+    final row = dbRows
+        .firstWhere((r) => r.appPackageName == 'com.example.custom_app');
+    expect(row.categoryId, tvApps.id);
+  });
 }
