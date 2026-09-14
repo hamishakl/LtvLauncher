@@ -41,8 +41,10 @@ import android.os.Handler;
 import android.os.Looper;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.RequiresApi;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -270,11 +272,16 @@ public class MainActivity extends FlutterActivity {
         new EventChannel(messenger, WATCH_NEXT_EVENT_CHANNEL).setStreamHandler(
                 new EventChannel.StreamHandler() {
                     private ContentObserver watchNextObserver;
+                    private boolean isObserverRegistered = false;
                     private Runnable debounceRunnable;
                     private final Handler mainHandler = new Handler(Looper.getMainLooper());
 
                     @Override
                     public void onListen(Object arguments, EventChannel.EventSink events) {
+                        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+                            return; // Watch Next is unsupported on Android < 8.0 (API < 26)
+                        }
+
                         watchNextObserver = new ContentObserver(mainHandler) {
                             @Override
                             public void onChange(boolean selfChange, Uri uri) {
@@ -293,12 +300,18 @@ public class MainActivity extends FlutterActivity {
                             }
                         };
 
+                        registerWatchNextObserverApi26();
+                    }
+
+                    @RequiresApi(Build.VERSION_CODES.O)
+                    private void registerWatchNextObserverApi26() {
                         try {
                             getContentResolver().registerContentObserver(
                                     TvContract.WatchNextPrograms.CONTENT_URI,
                                     true,
                                     watchNextObserver
                             );
+                            isObserverRegistered = true;
                         } catch (Exception e) {
                             e.printStackTrace();
                         }
@@ -310,14 +323,15 @@ public class MainActivity extends FlutterActivity {
                             mainHandler.removeCallbacks(debounceRunnable);
                             debounceRunnable = null;
                         }
-                        if (watchNextObserver != null) {
+                        if (isObserverRegistered && watchNextObserver != null) {
                             try {
                                 getContentResolver().unregisterContentObserver(watchNextObserver);
                             } catch (Exception e) {
                                 e.printStackTrace();
                             }
-                            watchNextObserver = null;
+                            isObserverRegistered = false;
                         }
+                        watchNextObserver = null;
                     }
                 }
         );
@@ -1198,6 +1212,14 @@ public class MainActivity extends FlutterActivity {
     }
 
     private List<Map<String, Object>> getWatchNextPrograms() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+            return Collections.emptyList();
+        }
+        return getWatchNextProgramsApi26();
+    }
+
+    @RequiresApi(Build.VERSION_CODES.O)
+    private List<Map<String, Object>> getWatchNextProgramsApi26() {
         List<Map<String, Object>> list = new ArrayList<>();
         try {
             String[] projection = {
@@ -1302,6 +1324,14 @@ public class MainActivity extends FlutterActivity {
     }
 
     private boolean deleteWatchNextProgram(long id) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+            return false;
+        }
+        return deleteWatchNextProgramApi26(id);
+    }
+
+    @RequiresApi(Build.VERSION_CODES.O)
+    private boolean deleteWatchNextProgramApi26(long id) {
         try {
             Uri uri = TvContract.buildWatchNextProgramUri(id);
             int rowsDeleted = getContentResolver().delete(uri, null, null);
