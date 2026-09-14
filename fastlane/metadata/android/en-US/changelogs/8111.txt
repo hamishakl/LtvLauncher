@@ -1,0 +1,5 @@
+- Fixed infinite loading screen on startup by repairing missing app category orders.
+- Fixed startup crash on Android 7.1 (Nougat) devices by safely isolating Android 8.0+ APIs.
+- Prevented orphaned apps when deleting sections by auto-migrating them to default categories.
+- Added separate setting to toggle playback percentage badge on Continue Watching cards.
+- Improved Continue Watching program details with smart description fallbacks and D-pad fixes.
