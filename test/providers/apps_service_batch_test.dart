@@ -34,21 +34,25 @@ void main() {
 
   test('Test addAllToCategory functionality', () async {
     const int numApps = 10;
-    int categoryId = await appsService.addCategory("Test Category", shouldNotifyListeners: false);
-    Category category = appsService.categories.firstWhere((c) => c.id == categoryId);
+    int categoryId = await appsService.addCategory("Test Category",
+        shouldNotifyListeners: false);
+    Category category =
+        appsService.categories.firstWhere((c) => c.id == categoryId);
 
-    List<App> appsToAdd = List.generate(numApps, (i) => App(
-      packageName: 'com.example.app$i',
-      name: 'App $i',
-      version: '1.0.0',
-      hidden: false,
-    ));
+    List<App> appsToAdd = List.generate(
+        numApps,
+        (i) => App(
+              packageName: 'com.example.app$i',
+              name: 'App $i',
+              version: '1.0.0',
+              hidden: false,
+            ));
 
     await database.persistApps(appsToAdd.map((app) => AppsCompanion(
-        packageName: Value(app.packageName),
-        name: Value(app.name),
-        version: Value(app.version),
-    )));
+          packageName: Value(app.packageName),
+          name: Value(app.name),
+          version: Value(app.version),
+        )));
 
     await appsService.addAllToCategory(appsToAdd, category);
 
@@ -62,10 +66,82 @@ void main() {
     expect(dbAppsCategories.length, numApps);
   });
 
+  test('refreshState repairs missing AppsCategories rows in database',
+      () async {
+    when(mockChannel.getApplications()).thenAnswer((_) async => [
+          {
+            'packageName': 'com.example.app0',
+            'name': 'App 0',
+            'version': '1.0.0',
+            'sideloaded': false
+          },
+          {
+            'packageName': 'com.example.app1',
+            'name': 'App 1',
+            'version': '1.0.0',
+            'sideloaded': false
+          },
+        ]);
+    when(mockChannel.getApplicationIcon(any))
+        .thenAnswer((_) async => Uint8List(0));
+    when(mockChannel.getApplicationBanner(any))
+        .thenAnswer((_) async => Uint8List(0));
+
+    await database.persistApps([
+      const AppsCompanion(
+        packageName: Value('com.example.app0'),
+        name: Value('App 0'),
+        version: Value('1.0.0'),
+      ),
+      const AppsCompanion(
+        packageName: Value('com.example.app1'),
+        name: Value('App 1'),
+        version: Value('1.0.0'),
+      ),
+    ]);
+
+    final tvCategoryId =
+        appsService.categories.firstWhere((c) => c.name == 'TV Apps').id;
+    await database.insertAppsCategories([
+      AppsCategoriesCompanion.insert(
+        categoryId: tvCategoryId,
+        appPackageName: 'com.example.app0',
+        order: 0,
+      ),
+      AppsCategoriesCompanion.insert(
+        categoryId: tvCategoryId,
+        appPackageName: 'com.example.app1',
+        order: 1,
+      ),
+    ]);
+    await appsService.refreshState();
+
+    var tvApps = appsService.categories.firstWhere((c) => c.name == 'TV Apps');
+    expect(tvApps.applications.length, 2);
+
+    await database.deleteAppCategory(tvCategoryId, 'com.example.app1');
+    await appsService.refreshState();
+
+    final repairedCategories = await database.getAppsCategories();
+    final repaired = repairedCategories
+        .where((row) => row.appPackageName == 'com.example.app1')
+        .toList();
+    expect(repaired.length, 1);
+    expect(repaired.first.order, 1);
+
+    final refreshedTvApps =
+        appsService.categories.firstWhere((c) => c.name == 'TV Apps');
+    expect(refreshedTvApps.applications.length, 2);
+    expect(refreshedTvApps.applications[0].packageName, 'com.example.app0');
+    expect(refreshedTvApps.applications[1].packageName, 'com.example.app1');
+  });
+
   test('Test addCategory sets correct order', () async {
-    int catId1 = await appsService.addCategory("Cat 1", shouldNotifyListeners: false);
-    int catId2 = await appsService.addCategory("Cat 2", shouldNotifyListeners: false);
-    
+    int catId1 =
+        await appsService.addCategory("Cat 1", shouldNotifyListeners: false);
+    int catId2 =
+        await appsService.addCategory("Cat 2", shouldNotifyListeners: false);
+
     Category cat1 = appsService.categories.firstWhere((c) => c.id == catId1);
     Category cat2 = appsService.categories.firstWhere((c) => c.id == catId2);
 
