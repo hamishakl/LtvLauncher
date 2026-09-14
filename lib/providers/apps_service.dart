@@ -288,7 +288,9 @@ class AppsService extends ChangeNotifier {
       }
     }
 
-    if (tvAppsIndex != -1 && nonTvAppsIndex != -1 && tvAppsIndex > nonTvAppsIndex) {
+    if (tvAppsIndex != -1 &&
+        nonTvAppsIndex != -1 &&
+        tvAppsIndex > nonTvAppsIndex) {
       final tvAppsSection = _launcherSections.removeAt(tvAppsIndex);
       _launcherSections.insert(nonTvAppsIndex, tvAppsSection);
       await persistSectionsOrder();
@@ -355,6 +357,8 @@ class AppsService extends ChangeNotifier {
       }
     }
 
+    final List<App> orphanedApps = [];
+
     for (App application in _applications.values) {
       Map? applicationFromSystem =
           appsFromSystemByPackageName[application.packageName]?.$1;
@@ -368,7 +372,7 @@ class AppsService extends ChangeNotifier {
         }
       }
 
-      if (appsCategories.isNotEmpty) {
+      if (_categoriesById.isNotEmpty) {
         List<AppCategory>? currentApplicationCategories =
             appsCategoriesByPackage[application.packageName];
 
@@ -382,24 +386,14 @@ class AppsService extends ChangeNotifier {
               }
             }
           }
-        } else if (_categoriesById.isNotEmpty) {
-          final targetCategory = _categoriesById.values.firstWhere(
-            (c) => c.name.toLowerCase() == 'applications' || c.name.toLowerCase() == 'apps',
-            orElse: () => _categoriesById.values.first,
-          );
-          if (!application.hidden) {
-            targetCategory.applications.add(application);
-          }
-        }
-      } else if (_categoriesById.isNotEmpty) {
-        final targetCategory = _categoriesById.values.firstWhere(
-          (c) => c.name.toLowerCase() == 'applications' || c.name.toLowerCase() == 'apps',
-          orElse: () => _categoriesById.values.first,
-        );
-        if (!application.hidden) {
-          targetCategory.applications.add(application);
+        } else {
+          orphanedApps.add(application);
         }
       }
+    }
+
+    if (orphanedApps.isNotEmpty) {
+      await _repairOrphanedAppCategories(orphanedApps);
     }
 
     for (Category category in _categoriesById.values) {
@@ -413,7 +407,8 @@ class AppsService extends ChangeNotifier {
 
   void sortCategory(Category category) {
     if (category.sort == CategorySort.alphabetical) {
-      category.applications.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+      category.applications
+          .sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
     } else if (category.sort == CategorySort.lastUsed) {
       category.applications.sort((a, b) {
         final aTime =
@@ -423,8 +418,62 @@ class AppsService extends ChangeNotifier {
         return bTime.compareTo(aTime); // Descending (newest first)
       });
     } else {
-      category.applications.sortBy<num>(
-          (application) => application.categoryOrders[category.id]!);
+      category.applications.sort((a, b) {
+        final aOrder = a.categoryOrders[category.id];
+        final bOrder = b.categoryOrders[category.id];
+        if (aOrder == null && bOrder == null) {
+          return a.packageName.compareTo(b.packageName);
+        }
+        if (aOrder == null) return 1;
+        if (bOrder == null) return -1;
+        return aOrder.compareTo(bOrder);
+      });
+    }
+  }
+
+  /// Assigns persisted category membership and manual order for installed apps
+  /// that are missing AppsCategories rows.
+  Future<void> _repairOrphanedAppCategories(Iterable<App> orphanedApps) async {
+    if (orphanedApps.isEmpty || _categoriesById.isEmpty) {
+      return;
+    }
+
+    final Map<int, List<App>> appsByCategoryId = {};
+    for (final app in orphanedApps) {
+      final targetCategory = _findTargetCategoryForNewApp(app.sideloaded);
+      if (targetCategory == null) {
+        continue;
+      }
+      (appsByCategoryId[targetCategory.id] ??= []).add(app);
+    }
+
+    final List<AppsCategoriesCompanion> batch = [];
+    for (final entry in appsByCategoryId.entries) {
+      final category = _categoriesById[entry.key];
+      if (category == null) {
+        continue;
+      }
+
+      final sortedApps = List<App>.from(entry.value)
+        ..sort((a, b) => a.packageName.compareTo(b.packageName));
+      int nextOrder = await _database.nextAppCategoryOrder(category.id) ?? 0;
+
+      for (final app in sortedApps) {
+        batch.add(AppsCategoriesCompanion.insert(
+          categoryId: category.id,
+          appPackageName: app.packageName,
+          order: nextOrder,
+        ));
+        app.categoryOrders[category.id] = nextOrder;
+        if (!app.hidden) {
+          category.applications.add(app);
+        }
+        nextOrder++;
+      }
+    }
+
+    if (batch.isNotEmpty) {
+      await _database.insertAppsCategories(batch);
     }
   }
 
@@ -581,7 +630,8 @@ class AppsService extends ChangeNotifier {
 
     await _database.insertAppsCategories(batch);
 
-    sortCategory(categoryFound); // also for new apps, which arrive without notify
+    sortCategory(
+        categoryFound); // also for new apps, which arrive without notify
     if (shouldNotifyListeners) {
       notifyListeners();
     }
