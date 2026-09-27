@@ -31,6 +31,7 @@ import 'package:flauncher/providers/notifications_service.dart';
 import 'package:flauncher/providers/watch_next_service.dart';
 import 'package:flauncher/providers/weather_service.dart';
 import 'package:flauncher/fork/jellyfin_service.dart';
+import 'package:flauncher/fork/seerr_service.dart';
 import 'package:flauncher/providers/backup_service.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -112,6 +113,7 @@ Future<void> main() async {
         ChangeNotifierProvider(create: (_) => WatchNextService(fLauncherChannel)),
         ChangeNotifierProvider(create: (_) => WeatherService(fLauncherChannel)),
         ChangeNotifierProvider(create: (_) => JellyfinService(fLauncherChannel)),
+        ChangeNotifierProvider(create: (_) => SeerrService(fLauncherChannel)),
       ],
       child: FLauncherApp()
     )

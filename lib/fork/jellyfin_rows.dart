@@ -1,4 +1,5 @@
 import 'package:flauncher/fork/jellyfin_service.dart';
+import 'package:flauncher/fork/seerr_service.dart';
 import 'package:flauncher/models/watch_next_program.dart';
 import 'package:flauncher/providers/apps_service.dart';
 import 'package:flauncher/providers/settings_service.dart';
@@ -7,16 +8,17 @@ import 'package:flauncher/widgets/continue_watching_row.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-/// Fork: "Next Up" and "Recently Added" rows from Jellyfin, rendered with the
-/// Continue Watching card. Shown directly under Continue Watching.
+/// Fork: "Next Up" and "Recently Added" rows from Jellyfin, plus a "For You" row of
+/// Seerr recommendations, rendered with the Continue Watching card. Shown directly
+/// under Continue Watching.
 class JellyfinRows extends StatelessWidget {
   const JellyfinRows({Key? key}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
-    return Consumer4<JellyfinService, WatchNextService, AppsService, SettingsService>(
-      builder: (context, jellyfin, watchNext, apps, settings, _) {
-        if (!jellyfin.configured) return const SizedBox.shrink();
+    return Consumer5<JellyfinService, SeerrService, WatchNextService, AppsService, SettingsService>(
+      builder: (context, jellyfin, seerr, watchNext, apps, settings, _) {
+        if (!jellyfin.configured && !seerr.configured) return const SizedBox.shrink();
 
         // Don't repeat shows that Continue Watching already has.
         final continuing = watchNext.programs.map((p) => p.title.trim().toLowerCase()).toSet();
@@ -29,6 +31,8 @@ class JellyfinRows extends StatelessWidget {
             _row(context, 'Next Up', nextUp.where((p) => !hidden.contains(p.id.toString())).toList(), watchNext, apps, settings),
             _row(context, 'Recently Added',
                 jellyfin.recentlyAdded.where((p) => !hidden.contains(p.id.toString())).toList(), watchNext, apps, settings),
+            _row(context, 'For You', seerr.forYou.where((p) => !hidden.contains(p.id.toString())).toList(), watchNext,
+                apps, settings),
           ],
         );
       },

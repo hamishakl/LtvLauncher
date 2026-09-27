@@ -12,13 +12,15 @@ import 'package:path_provider/path_provider.dart';
 ///
 /// {
 ///   "weather":  { "name": "Auckland", "latitude": -36.8485, "longitude": 174.7633 },
-///   "jellyfin": { "url": "http://192.168.0.243:8096", "apiKey": "...", "userId": "..." }
+///   "jellyfin": { "url": "http://192.168.0.243:8096", "apiKey": "...", "userId": "..." },
+///   "seerr":    { "url": "https://requests.example.com", "apiKey": "..." }
 /// }
 class ForkConfig {
   final WeatherLocation weather;
   final JellyfinConfig? jellyfin;
+  final SeerrConfig? seerr;
 
-  const ForkConfig({required this.weather, this.jellyfin});
+  const ForkConfig({required this.weather, this.jellyfin, this.seerr});
 
   static const _defaultWeather = WeatherLocation(name: 'Auckland', latitude: -36.8485, longitude: 174.7633);
 
@@ -36,6 +38,7 @@ class ForkConfig {
       return ForkConfig(
         weather: WeatherLocation.fromJson(json['weather'] as Map<String, dynamic>?) ?? _defaultWeather,
         jellyfin: JellyfinConfig.fromJson(json['jellyfin'] as Map<String, dynamic>?),
+        seerr: SeerrConfig.fromJson(json['seerr'] as Map<String, dynamic>?),
       );
     } catch (e, stack) {
       developer.log('Failed to read fork_config.json', name: 'ForkConfig', error: e, stackTrace: stack);
@@ -75,6 +78,21 @@ class JellyfinConfig {
     final userId = json['userId'] as String? ?? '';
     if (url.isEmpty || apiKey.isEmpty || userId.isEmpty) return null;
     return JellyfinConfig(url: url, apiKey: apiKey, userId: userId);
+  }
+}
+
+class SeerrConfig {
+  final String url;
+  final String apiKey;
+
+  const SeerrConfig({required this.url, required this.apiKey});
+
+  static SeerrConfig? fromJson(Map<String, dynamic>? json) {
+    if (json == null) return null;
+    final url = (json['url'] as String? ?? '').replaceAll(RegExp(r'/+$'), '');
+    final apiKey = json['apiKey'] as String? ?? '';
+    if (url.isEmpty || apiKey.isEmpty) return null;
+    return SeerrConfig(url: url, apiKey: apiKey);
   }
 }
 
